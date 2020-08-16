@@ -1,47 +1,98 @@
 <template>
-    <div>
-        <el-form class='login-form' :rules='rules'>
-            <el-form-item  props="email">
-                <span>
-                    <i class='el-icon-mobile'></i>
-                </span>
-                <el-input placeHolder='邮箱'></el-input>
-            </el-form-item>
 
-            <el-form-item  props="passwd">
-                <span>
-                    <i class='el-icon-lock'></i>
-                </span>
-                <el-input placeHolder='密码'></el-input>
-            </el-form-item>
+<div class="login-container">
+    <el-form class="login-form" label-width="100px"  :model="form" :rules="rules" ref="loginForm">
+        <div class="title-container">
+            <img src="/logo.png" alt="">
+        </div>
 
-            <el-form-item  props="captcha">
-                <el-input placeHolder='验证码'></el-input>
-                <img @click="updateCaptcha" :src="captchaUrl" alt="">
-            </el-form-item>
-        </el-form>
-    </div>
+        <el-form-item prop="email" label="邮箱">
+            <el-input v-model="form.email" placeholder="请输入邮箱"></el-input>
+        </el-form-item>
+
+        <el-form-item prop="captcha" label="验证码"  class="captcha-container">
+            <div class="captcha">
+                <img :src="code.captcha" alt="" @click="resetCaptcha">
+            </div>
+            <el-input v-model="form.captcha" placeholder="请输入验证码"></el-input>
+        </el-form-item>
+
+        <el-form-item prop="passwd" label="密码">
+            <el-input type="password" v-model="form.passwd" placeholder="请输入密码"></el-input>
+        </el-form-item>
+
+
+        <el-form-item>
+            <el-button type="primary" @click.native.prevent="handlerLogin" >登陆</el-button>
+        </el-form-item>
+
+    </el-form>
+</div>
+    
 </template>
 
 <script>
+import md5 from 'md5'
 export default {
     layout: 'login',
-    data(){
-        return {
-            rules:[],
-            captchaUrl: '/api/captcha?_t='+ new Date().getTime()
+    methods:{
+        handlerLogin(){
+            this.$refs.loginForm.validate( async valid => {
+                if(valid){
+                    let obj = {
+                        email: this.form.email,
+                        passwd: md5(this.form.passwd),
+                        captcha: this.form.captcha
+                    }
+
+                    let ret = await this.$http.post('/user/login',obj)
+                    
+                    if(ret.code == 0){
+                        //token 存储，登陆成功，返回token
+                        this.$message.success('登陆成功')
+                        
+                        setTimeout(() => {
+                             this.$router.push("/")
+                        }, 500);
+                    }else{
+                        this.$message.error(ret.message)
+                    }
+
+                }else{
+                }
+            })
+        },
+        resetCaptcha(){
+            this.code.captcha = '/api/captcha?_t='+ new Date().getTime()
         }
     },
-    methods:{
-        updateCaptcha(){
-            this.captchaUrl = '/api/captcha?_t='+ new Date().getTime()
+    data(){
+        return {
+            form:{
+                email:"asfasdf@163.com",
+                passwd:"a123456",
+                captcha:""
+            },
+            rules:{
+                email:[
+                    {required:true,message:"请输入邮箱"},
+                    {type:'email',message:"请输入正确邮箱格式"}
+                ],
+                captcha:[
+                    {required:true,message:"请输入验证码"}
+                ],
+                passwd:[
+                    {required:true, message:"请输入密码"},
+                ]
+            },
+            code:{
+                captcha:'/api/captcha'
+            }
         }
     }
 }
 </script>
 
 <style lang="stylus">
-.login-form
-    width 800px
-    margin 50px auto
+
 </style>
