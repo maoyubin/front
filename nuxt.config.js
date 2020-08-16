@@ -55,7 +55,8 @@ export default {
   */
   modules: [
     // Doc: https://axios.nuxtjs.org/usage
-    '@nuxtjs/axios'
+    '@nuxtjs/axios',
+    '@nuxtjs/proxy'
   ],
   /*
   ** Axios module configuration
@@ -68,5 +69,14 @@ export default {
   */
   build: {
     transpile: [/^element-ui/]
+  },
+  proxy:{
+    "/api/":{
+      target:"http://localhost:7001",
+      secure: false,
+      pathRewrite:{
+        '^/api':""
+      }
+    }
   }
 }
