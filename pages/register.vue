@@ -78,10 +78,10 @@ export default {
     data(){
         return {
             form:{
-                email:"asfasdf@163.com",
+                email:"maoyubinabc@163.com",
                 nickname:"Matt",
-                passwd:"a123456",
-                repasswd:"a123456",
+                passwd:"123",
+                repasswd:"123",
                 captcha:""
             },
             rules:{
