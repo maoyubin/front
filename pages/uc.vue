@@ -65,7 +65,6 @@ export default {
             return new Promise(resolve => {
                 const reader = new FileReader()
                 reader.onload = function(){
-                    console.log(111,reader.result)
                     const ret = reader.result.split('')
                                     .map(v=>v.charCodeAt())
                                     .map(v=>v.toString(16).toUpperCase())
@@ -87,10 +86,10 @@ export default {
             return await this.isGif(file)
         },
         async uploadFile(){
-            if(! await this.isImage(this.file)){
-                alert('this is not deired image')
-                return
-            }
+            // if(! await this.isImage(this.file)){
+            //     alert('this is not deired image')
+            //     return
+            // }
 
 
             const form = new FormData()
@@ -110,8 +109,6 @@ export default {
             if(!file) return 
 
             this.file = file
-
-
         }
     }
 }
