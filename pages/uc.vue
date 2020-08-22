@@ -61,7 +61,38 @@ export default {
                 this.file = fileList[0]
             })
         },
+        async blobToString(file){
+            return new Promise(resolve => {
+                const reader = new FileReader()
+                reader.onload = function(){
+                    console.log(111,reader.result)
+                    const ret = reader.result.split('')
+                                    .map(v=>v.charCodeAt())
+                                    .map(v=>v.toString(16).toUpperCase())
+                                    .join(' ')
+                    resolve(ret)
+                }
+                reader.readAsBinaryString(file)
+            })
+        },
+        async isGif(file){
+            //前面16进制 '47 49 46 38 39 61'  '47 49 46 38 37 61'
+            const ret = await this.blobToString(file.slice(0, 6))
+            
+            const isGif = (ret =='47 49 46 38 39 61') || (ret == '47 49 46 38 37 61')
+            return isGif
+        },
+        async isImage(file){
+            //通过文件流判断
+            return await this.isGif(file)
+        },
         async uploadFile(){
+            if(! await this.isImage(this.file)){
+                alert('this is not deired image')
+                return
+            }
+
+
             const form = new FormData()
             form.append('name','file')
             form.append('file',this.file)
