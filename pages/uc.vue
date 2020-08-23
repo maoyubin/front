@@ -13,6 +13,12 @@
             <el-button @click="uploadFile">upLoad</el-button>
         </div>
 
+        <div>
+            <p>calculate hash progress</p>
+            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress" ></el-progress>
+
+        </div>
+
     </div>
 </template>
 
@@ -27,8 +33,10 @@
 </style>
 
 <script>
+import { resolve } from 'url'
 //&:hover
 //        border-color red
+const CHUNK_SIZE = 1* 1024 * 1024
 export default {
     mounted(){
         const ret = this.$http.get('/user/info')
@@ -38,7 +46,8 @@ export default {
     data(){
         return {
             file: null,
-            uploadProgress: 0
+            uploadProgress: 0,
+            hashProgress: 0 
         }
     },
     methods:{
@@ -85,13 +94,44 @@ export default {
             //通过文件流判断
             return await this.isGif(file)
         },
+        createFileChunk(file, size=CHUNK_SIZE){
+            const chunks = []
+            let cur = 0
+            while(cur < this.file.size){
+                chunks.push({index:cur, file:this.file.slice(cur, cur + size)})
+                cur +=size
+            }
+            return chunks
+        },
+
+        async calculateHashWorker(){
+            return new Promise(resolve=>{
+                this.worker = new Worker('/hash.js')
+                this.worker.postMessage({chunks:this.chunks})
+                this.worker.onmessage= e=>{
+                    const {progress, hash} = e.data
+                    this.hashProgress = Number(progress.toFixed(2))
+                    if(hash){
+                        resolve(hash)
+                    }
+                }
+            })
+        },
+
+        async calculateHashIdle(){
+
+        },
         async uploadFile(){
             // if(! await this.isImage(this.file)){
             //     alert('this is not deired image')
             //     return
             // }
 
+            this.chunks = this.createFileChunk(this.file)
+            const hash = await this.calculateHashWorker()
+            console.log('file hash :',hash)
 
+            return
             const form = new FormData()
             form.append('name','file')
             form.append('file',this.file)
