@@ -14,9 +14,10 @@
         </div>
 
         <div>
-            <p>calculate hash progress</p>
-            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress" ></el-progress>
-
+            <p>CAL Hash progress1</p>
+            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress1" ></el-progress>
+            <p>CAL Hash progress2</p>
+            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress2" ></el-progress>
         </div>
 
     </div>
@@ -34,9 +35,10 @@
 
 <script>
 import { resolve } from 'url'
+import sparkMD5 from 'spark-md5'
 //&:hover
 //        border-color red
-const CHUNK_SIZE = 1* 1024 * 1024
+const CHUNK_SIZE = 0.5* 1024 * 1024
 export default {
     mounted(){
         const ret = this.$http.get('/user/info')
@@ -47,7 +49,8 @@ export default {
         return {
             file: null,
             uploadProgress: 0,
-            hashProgress: 0 
+            hashProgress1: 0 ,
+            hashProgress2: 0 
         }
     },
     methods:{
@@ -110,7 +113,7 @@ export default {
                 this.worker.postMessage({chunks:this.chunks})
                 this.worker.onmessage= e=>{
                     const {progress, hash} = e.data
-                    this.hashProgress = Number(progress.toFixed(2))
+                    this.hashProgress1 = Number(progress.toFixed(2))
                     if(hash){
                         resolve(hash)
                     }
@@ -119,6 +122,38 @@ export default {
         },
 
         async calculateHashIdle(){
+            return new Promise(resolve=>{
+                const chunks = this.chunks
+                const spark = new sparkMD5.ArrayBuffer()
+                let count = 0
+                const appendToSpark = async file =>{
+                    return new Promise(resolve=>{
+                        const reader = new FileReader()
+                        reader.readAsArrayBuffer(file)
+                        reader.onload = e => {
+                            spark.append(e.target.result)
+                            resolve()
+                        }
+                    })
+                }
+                const workLoop = async deadline => {
+                    while(count < chunks.length && deadline.timeRemaining()>1){
+                        //空闲时间，且有任务
+                        await appendToSpark(chunks[count].file)
+                        count++
+                        if(count<chunks.length){
+                            this.hashProgress2 = Number(
+                                ((100*count)/chunks.length).toFixed(2)
+                                )
+                        }else{
+                            this.hashProgress2 = 100
+                            resolve(spark.end())
+                        }
+                    }
+                    window.requestIdleCallback(workLoop)
+                }
+                window.requestIdleCallback(workLoop)
+            }) 
 
         },
         async uploadFile(){
@@ -126,10 +161,15 @@ export default {
             //     alert('this is not deired image')
             //     return
             // }
+            this.hashProgress1= 0 
+             this.hashProgress2= 0 
 
             this.chunks = this.createFileChunk(this.file)
-            const hash = await this.calculateHashWorker()
-            console.log('file hash :',hash)
+            const hash1 = await this.calculateHashWorker()
+
+            const hash2 = await this.calculateHashIdle()
+            console.log('file hash1 :',hash1)
+            console.log('file hash1 :',hash2)
 
             return
             const form = new FormData()
