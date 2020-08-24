@@ -7,19 +7,32 @@
         </div>
 
         <div>
-            <el-progress :stroke-width='20' :text-inside='true'  :percentage="uploadProgress" ></el-progress>
+            <el-progress :stroke-width='20' :text-inside='true' :percentage="uploadProgress" ></el-progress>
         </div>
         <div>
             <el-button @click="uploadFile">upLoad</el-button>
         </div>
 
         <div>
-            <p>CAL Hash progress1</p>
-            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress1" ></el-progress>
-            <p>CAL Hash progress2</p>
-            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress2" ></el-progress>
+            <p>CAL Hash progress</p>
+            <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress" ></el-progress>
         </div>
 
+        <div>
+            <div class="cube-container" :style="{width:cubeWidth + 'px'}">
+                <div class="cube" v-for="chunk in chunks" :key="chunk.name">
+                    <div
+                        :class="{
+                            'uploading': chunk.progress>0&&chunk.progress<100,
+                            'success': chunk.progress==100,
+                            'error': chunk.progress < 0
+                        }"
+                    >
+                        <i class="el-icon-loading" style="color:#f56c6c" v-if="chunk.progress<100 && chunk.progress >0"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 </template>
 
@@ -30,6 +43,21 @@
     border 2px dashed #eee
     text-align center
     vertical-align middle
+.cube-container
+    margin-left 100px
+    .cube
+        width 14px
+        height 14px
+        line-height 12px
+        border 1px black solid 
+        background #eee
+        float left
+        >.success
+            background green
+        >.uploading
+            background blue
+        >.error
+            background red
     
 </style>
 
@@ -38,7 +66,7 @@ import { resolve } from 'url'
 import sparkMD5 from 'spark-md5'
 //&:hover
 //        border-color red
-const CHUNK_SIZE = 0.5* 1024 * 1024
+const CHUNK_SIZE = 0.1* 1024 * 1024
 export default {
     mounted(){
         const ret = this.$http.get('/user/info')
@@ -48,9 +76,28 @@ export default {
     data(){
         return {
             file: null,
-            uploadProgress: 0,
-            hashProgress1: 0 ,
-            hashProgress2: 0 
+            //uploadProgress: 0,
+            hashProgress: 0,
+            chunks:[]
+        }
+    },
+    computed:{
+        cubeWidth(){
+            return Math.ceil(Math.sqrt(this.chunks.length))*16
+        },
+        uploadProgress(){
+            if(!this.file || this.chunks.length==0){
+                return 0
+            }
+            const loaded = this.chunks.map(item=> {
+                    //console.log('item.chunk.size',item.chunk.size)
+                 //console.log('item.progress',item.progress)
+                return item.chunk.size*item.progress
+            })
+            .reduce((acc, cur) => acc+cur, 0)
+            console.log('loaded',loaded)
+
+            return parseInt(((loaded*100)/this.file.size).toFixed(2))
         }
     },
     methods:{
@@ -113,7 +160,7 @@ export default {
                 this.worker.postMessage({chunks:this.chunks})
                 this.worker.onmessage= e=>{
                     const {progress, hash} = e.data
-                    this.hashProgress1 = Number(progress.toFixed(2))
+                    this.hashProgress = Number(progress.toFixed(2))
                     if(hash){
                         resolve(hash)
                     }
@@ -142,11 +189,11 @@ export default {
                         await appendToSpark(chunks[count].file)
                         count++
                         if(count<chunks.length){
-                            this.hashProgress2 = Number(
+                            this.hashProgress = Number(
                                 ((100*count)/chunks.length).toFixed(2)
                                 )
                         }else{
-                            this.hashProgress2 = 100
+                            this.hashProgress = 100
                             resolve(spark.end())
                         }
                     }
@@ -156,22 +203,77 @@ export default {
             }) 
 
         },
+
+        async calculateHashSample(){
+            return new Promise(resolve=>{
+                const spark = new sparkMD5.ArrayBuffer()
+                const reader = new FileReader()
+                const file = this.file
+                const size = file.size
+                const offset = 2*1024*1024
+
+                //first 2m chunck and the last chunck
+                //in the midlle and the front mille  and end get 2byte
+
+                let chunks = [file.slice(0,offset)]
+
+                let cur = offset
+                while(cur<size){
+                    if(cur+offset>=size){
+                        chunks.push(file.slice(cur, cur+offset))
+                    }else{
+                        const mid = cur + offset/2
+
+                        const end = cur + offset
+                        chunks.push(file.slice(cur, cur+2))
+
+                        chunks.push(file.slice(mid, mid+2))
+
+                        chunks.push(file.slice(end-2, end))
+                    }
+                    cur +=offset
+                }
+
+                reader.readAsArrayBuffer(new Blob(chunks))
+                reader.onload= e=>{
+                    spark.append(e.target.result)
+                    this.hashProgress = 100
+                    resolve(spark.end())
+                }
+
+            })
+
+        },
         async uploadFile(){
             // if(! await this.isImage(this.file)){
             //     alert('this is not deired image')
             //     return
             // }
-            this.hashProgress1= 0 
-             this.hashProgress2= 0 
+            this.hashProgress= 0 
 
-            this.chunks = this.createFileChunk(this.file)
-            const hash1 = await this.calculateHashWorker()
+            const chunks = this.createFileChunk(this.file)
+            //const hash1 = await this.calculateHashWorker()
+            //const hash2 = await this.calculateHashIdle()
+            const hash= await this.calculateHashSample()
+            //console.log('file hash1 :',hash1)
+            //console.log('file hash2 :',hash2)
+            //console.log('file hash3 :',hash)
+            
 
-            const hash2 = await this.calculateHashIdle()
-            console.log('file hash1 :',hash1)
-            console.log('file hash1 :',hash2)
+            this.chunks = chunks.map((chunk, index) =>{
+                const name = hash +'-' + index
+                return {
+                    hash,
+                    name,
+                    index,
+                    chunk:chunk.file,
+                    progress:22
+                }
+            })
 
-            return
+            //await this.uploadChunks()
+
+            /** 
             const form = new FormData()
             form.append('name','file')
             form.append('file',this.file)
@@ -181,9 +283,26 @@ export default {
                     this.uploadProgress = Number(((progress.loaded/progress.total)*100).toFixed(2))
                 }
             })
-            console.log(ret)
+            console.log(ret)*/
         },
-
+        async uploadChunks(){
+            const requests = this.chunks.map((chunk, index)=>{
+                //convert the promise
+                const form = new FormData()
+                form.append('chunk',chunk.chunk)
+                form.append('hash',chunk.hash)
+                form.append('name',chunk.name)
+                return form
+            }).map((form, index)=>{
+                this.$http.post('/uploadfile', {
+                    // uploadProgress: progress=>{
+                    //     this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
+                    // }
+                })
+            })
+            //todo并发量的控制
+            await Promise.all(requests)
+        },
         handleFileChnage(e){
             const [file] = e.target.files
             if(!file) return 
