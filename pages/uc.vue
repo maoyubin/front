@@ -18,6 +18,7 @@
             <el-progress :stroke-width='20' :text-inside='true'  :percentage="hashProgress" ></el-progress>
         </div>
 
+    
         <div>
             <div class="cube-container" :style="{width:cubeWidth + 'px'}">
                 <div class="cube" v-for="chunk in chunks" :key="chunk.name">
@@ -27,10 +28,11 @@
                             'success': chunk.progress==100,
                             'error': chunk.progress < 0
                         }"
-                    >
-                        <i class="el-icon-loading" style="color:#f56c6c" v-if="chunk.progress<100 && chunk.progress >0"></i>
-                    </div>
+                        :style="{height:chunk.progress+'%'}"
+                    ></div>
+                    <i class="el-icon-loading" style="color:#f56c6c" v-if="chunk.progress<100 && chunk.progress >0"></i>
                 </div>
+                    
             </div>
         </div>
     </div>
@@ -66,7 +68,7 @@ import { resolve } from 'url'
 import sparkMD5 from 'spark-md5'
 //&:hover
 //        border-color red
-const CHUNK_SIZE = 0.1* 1024 * 1024
+const CHUNK_SIZE = 1* 1024 * 1024
 export default {
     mounted(){
         const ret = this.$http.get('/user/info')
@@ -78,7 +80,8 @@ export default {
             file: null,
             //uploadProgress: 0,
             hashProgress: 0,
-            chunks:[]
+            chunks:[],
+            fileHash:''
         }
     },
     computed:{
@@ -259,7 +262,7 @@ export default {
             //console.log('file hash2 :',hash2)
             //console.log('file hash3 :',hash)
             
-
+            this.fileHash = hash
             this.chunks = chunks.map((chunk, index) =>{
                 const name = hash +'-' + index
                 return {
@@ -267,11 +270,11 @@ export default {
                     name,
                     index,
                     chunk:chunk.file,
-                    progress:22
+                    progress:0
                 }
             })
 
-            //await this.uploadChunks()
+            await this.uploadChunks()
 
             /** 
             const form = new FormData()
@@ -286,6 +289,7 @@ export default {
             console.log(ret)*/
         },
         async uploadChunks(){
+
             const requests = this.chunks.map((chunk, index)=>{
                 //convert the promise
                 const form = new FormData()
@@ -293,15 +297,24 @@ export default {
                 form.append('hash',chunk.hash)
                 form.append('name',chunk.name)
                 return form
-            }).map((form, index)=>{
-                this.$http.post('/uploadfile', {
-                    // uploadProgress: progress=>{
-                    //     this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
-                    // }
+            }).map((form, index)=>
+                this.$http.post('/uploadfile', form ,{
+                    onUploadProgress: progress=>{
+                        this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
+                    }
                 })
-            })
+            )
             //todo并发量的控制
             await Promise.all(requests)
+
+            await this.mergeRequest()
+        },
+        async mergeRequest(){
+            this.$http.post('/mergefile',{
+                ext:this.file.name.split('.').pop(),
+                size:CHUNK_SIZE,
+                hash: this.fileHash
+            })
         },
         handleFileChnage(e){
             const [file] = e.target.files
