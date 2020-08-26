@@ -68,7 +68,7 @@ import { resolve } from 'url'
 import sparkMD5 from 'spark-md5'
 //&:hover
 //        border-color red
-const CHUNK_SIZE = 1* 1024 * 1024
+const CHUNK_SIZE = 0.3* 1024 * 1024
 export default {
     mounted(){
         const ret = this.$http.get('/user/info')
@@ -316,7 +316,7 @@ export default {
                 form.append('chunk',chunk.chunk)
                 form.append('hash',chunk.hash)
                 form.append('name',chunk.name)
-                return {form, index: chunk.index}
+                return {form, index: chunk.index, error:0}
             })
             // .map(({form, index})=>
             //     this.$http.post('/uploadfile', form ,{
@@ -336,23 +336,37 @@ export default {
             return new Promise((resolve, reject)=>{
                 const len = chunks.length
                 let counter = 0
-
+                let isStop = false
                 const start = async ()=>{
+                    if(isStop){
+                        return
+                    }
                     const task = chunks.shift()
                     if(task){
                         const {form, index} = task
-                       
-                        await this.$http.post('/uploadfile', form ,{
-                            onUploadProgress: progress=>{
-                                this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
-                            }
-                        })
 
-                        if(counter == len -1){
-                            resolve()
-                        }else{
-                            counter++
-                            start()
+                        try{
+                            await this.$http.post('/uploadfile', form ,{
+                                onUploadProgress: progress=>{
+                                    this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
+                                }
+                            })
+                            if(counter == len -1){
+                                resolve()
+                            }else{
+                                counter++
+                                start()
+                            }
+                        }catch(e){
+                            this.chunks[index].progress=-1
+                            if(task.error<3){
+                                task.error++
+                                chunks.unshift(task)
+                                start()
+                            }else{
+                                isStop = true
+                                reject()
+                            }
                         }
                     }
                 }
