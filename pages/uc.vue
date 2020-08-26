@@ -1,7 +1,7 @@
 <template>
     <div>
         <h1>用户中心</h1>
-
+        <i class="el-icon-loading" ></i>
         <div ref='drag' id="drag">
             <input type="file" name="file" @change="handleFileChnage">
         </div>
@@ -98,9 +98,9 @@ export default {
                 return item.chunk.size*item.progress
             })
             .reduce((acc, cur) => acc+cur, 0)
-            console.log('loaded',loaded)
+            console.log('loaded',parseInt(((loaded)/this.file.size).toFixed(2)))
 
-            return parseInt(((loaded*100)/this.file.size).toFixed(2))
+            return parseInt(((loaded)/this.file.size).toFixed(2))
         }
     },
     methods:{
@@ -252,6 +252,10 @@ export default {
             //     alert('this is not deired image')
             //     return
             // }
+            if(!this.file){
+                return
+            }
+
             this.hashProgress= 0 
 
             const chunks = this.createFileChunk(this.file)
@@ -263,6 +267,19 @@ export default {
             //console.log('file hash3 :',hash)
             
             this.fileHash = hash
+
+            const {data:{uploaded, uploadedList}} = await this.$http.post('/checkfile',{
+                hash: this.fileHash,
+                ext: this.file.name.split('.').pop()
+            })
+
+            console.log(123,uploaded, uploadedList)
+
+            if(uploaded){
+                return this.$message.success(' sss upload success')
+            }
+
+
             this.chunks = chunks.map((chunk, index) =>{
                 const name = hash +'-' + index
                 return {
@@ -270,11 +287,12 @@ export default {
                     name,
                     index,
                     chunk:chunk.file,
-                    progress:0
+                    //set the progress bar and already uploaded assign to 100
+                    progress: uploadedList.indexOf(name)>-1?100:0
                 }
             })
 
-            await this.uploadChunks()
+            await this.uploadChunks(uploadedList)
 
             /** 
             const form = new FormData()
@@ -288,26 +306,63 @@ export default {
             })
             console.log(ret)*/
         },
-        async uploadChunks(){
+        async uploadChunks(uploadedList){
 
-            const requests = this.chunks.map((chunk, index)=>{
+            const requests = this.chunks
+                .filter(chunk => uploadedList.indexOf(chunk.name) == -1)
+                .map((chunk, index)=>{
                 //convert the promise
                 const form = new FormData()
                 form.append('chunk',chunk.chunk)
                 form.append('hash',chunk.hash)
                 form.append('name',chunk.name)
-                return form
-            }).map((form, index)=>
-                this.$http.post('/uploadfile', form ,{
-                    onUploadProgress: progress=>{
-                        this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
-                    }
-                })
-            )
-            //todo并发量的控制
-            await Promise.all(requests)
+                return {form, index: chunk.index}
+            })
+            // .map(({form, index})=>
+            //     this.$http.post('/uploadfile', form ,{
+            //         onUploadProgress: progress=>{
+            //             this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
+            //         }
+            //     })
+            // )
+            //todo异步并发量的控制
+            //await Promise.all(requests)
+
+            await this.sendRequest(requests)
 
             await this.mergeRequest()
+        },
+        async sendRequest(chunks, limit=4){
+            return new Promise((resolve, reject)=>{
+                const len = chunks.length
+                let counter = 0
+
+                const start = async ()=>{
+                    const task = chunks.shift()
+                    if(task){
+                        const {form, index} = task
+                       
+                        await this.$http.post('/uploadfile', form ,{
+                            onUploadProgress: progress=>{
+                                this.chunks[index].progress = Number(((progress.loaded/progress.total)*100).toFixed(2))
+                            }
+                        })
+
+                        if(counter == len -1){
+                            resolve()
+                        }else{
+                            counter++
+                            start()
+                        }
+                    }
+                }
+                while(limit>0){
+                    setTimeout(()=>{
+                        start()
+                    },Math.random*2000)
+                    limit -=1
+                }
+            })
         },
         async mergeRequest(){
             this.$http.post('/mergefile',{
